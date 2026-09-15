@@ -1,0 +1,365 @@
+
+BASE 44 - RED TEAM
+"""
+Advanced Red Teaming Analyzer - rule-based critical analysis of research papers.
+Ported from the provided AdvancedRedTeamingAnalyzer class with minor fixes.
+"""
+import re
+import math
+from collections import defaultdict
+from typing import Dict, List, Optional
+
+import numpy as np
+from scipy import stats
+
+
+class AdvancedRedTeamingAnalyzer:
+    def __init__(self):
+        self.statistical_tests = ['t_test', 'chi_squared', 'anova', 'regression', 'correlation']
+
+        self.logical_fallacies = {
+            'post_hoc': r'(?:after|following|subsequent to)[^.]{0,120}?(?:therefore|thus|consequently)',
+            'false_dichotomy': r'(?:either[^.]{0,80}?or\b|only two options|binary choice)',
+            'hasty_generalization': r'\b(?:always|never|all participants|every subject|none of)\b',
+            'circular_reasoning': r'because[^.]{0,60}?therefore[^.]{0,60}?because',
+            'appeal_to_authority': r'(?:according to (?:the )?experts?|authorities say|prominent figure)',
+        }
+
+    # -------- Public entry --------
+    def analyze_paper(self, paper_text: str, subject_area: Optional[str] = None) -> Dict:
+        report = {
+            'methodology_assessment': self._analyze_methodology(paper_text),
+            'statistical_validity': self._analyze_statistics(paper_text),
+            'logical_coherence': self._analyze_logic(paper_text),
+            'evidence_strength': self._evaluate_evidence(paper_text),
+            'potential_biases': self._detect_biases(paper_text),
+            'alternative_explanations': self._generate_alternatives(paper_text),
+        }
+        report['confidence_score'] = self._calculate_confidence(report)
+        report['critical_recommendations'] = self._generate_recommendations(report)
+        return report
+
+    # -------- Methodology --------
+    def _analyze_methodology(self, text: str) -> Dict:
+        checks = [
+            self._check_sample_size(text),
+            self._check_control_group(text),
+            self._check_randomization(text),
+            self._check_blinding(text),
+            self._check_confounding(text),
+        ]
+        score = sum(c['score'] for c in checks) / len(checks)
+        issues = [i for c in checks for i in c['issues']]
+        return {
+            'methodology_score': round(score, 3),
+            'issues_identified': issues,
+            'methodology_quality': self._rate_quality(score),
+        }
+
+    def _check_sample_size(self, text: str) -> Dict:
+        n = self._extract_sample_size(text)
+        if n is None:
+            return {'score': 0.5, 'issues': ['Sample size not clearly stated']}
+        if n < 30:
+            return {'score': 0.3, 'issues': [f'Small sample size (n={n}) may lack statistical power']}
+        if n < 100:
+            return {'score': 0.7, 'issues': [f'Moderate sample size (n={n}); consider formal power analysis']}
+        return {'score': 1.0, 'issues': []}
+
+    def _check_control_group(self, text: str) -> Dict:
+        # Look for "control group" but exclude negated forms like "no control group", "without a control group"
+        if re.search(
+            r'\b(?:no|without|lack(?:ing)?\s+of|absent|absence\s+of|never\s+had)\s+(?:a\s+|any\s+)?(?:control|comparison|placebo)\s+group',
+            text, re.IGNORECASE,
+        ):
+            return {'score': 0.4, 'issues': ['Text explicitly states no control/comparison group — causal inference is weakened']}
+        if re.search(r'\b(?:control|comparison|placebo)\s+group\b', text, re.IGNORECASE):
+            return {'score': 1.0, 'issues': []}
+        return {'score': 0.4, 'issues': ['No control group mentioned — causal inference is weakened']}
+
+    def _check_randomization(self, text: str) -> Dict:
+        if re.search(r'random(?:ly|ized|isation|ization)', text, re.IGNORECASE):
+            return {'score': 1.0, 'issues': []}
+        return {'score': 0.5, 'issues': ['Randomization not mentioned — selection bias is possible']}
+
+    def _check_blinding(self, text: str) -> Dict:
+        if re.search(r'(?:single|double|triple)[-\s]blind', text, re.IGNORECASE):
+            return {'score': 1.0, 'issues': []}
+        return {'score': 0.6, 'issues': ['Blinding not implemented — expectancy effects possible']}
+
+    def _check_confounding(self, text: str) -> Dict:
+        if re.search(r'confound(?:ing|er|s)?|covariates?\s+adjusted', text, re.IGNORECASE):
+            return {'score': 1.0, 'issues': []}
+        return {'score': 0.4, 'issues': ['Confounding variables not explicitly addressed']}
+
+    # -------- Statistics --------
+    def _analyze_statistics(self, text: str) -> Dict:
+        out = {
+            'tests_detected': [],
+            'potential_errors': [],
+            'p_value_analysis': None,
+            'power_analysis': None,
+        }
+        test_patterns = {
+            't_test': r't[-\s]?test',
+            'chi_squared': r'chi[-\s]?squared?|χ²',
+            'anova': r'\bANOVA\b',
+            'regression': r'regression',
+            'correlation': r'correlation',
+        }
+        for name, pat in test_patterns.items():
+            if re.search(pat, text, re.IGNORECASE):
+                out['tests_detected'].append(name)
+
+        p_values = self._extract_p_values(text)
+        if p_values:
+            out['p_value_analysis'] = self._analyze_p_values(p_values)
+
+        out['potential_errors'] = self._check_statistical_errors(text)
+
+        n = self._extract_sample_size(text)
+        d = self._extract_effect_size(text)
+        if n and d:
+            out['power_analysis'] = self._estimate_statistical_power(n, d)
+        return out
+
+    def _extract_p_values(self, text: str) -> List[float]:
+        vals: List[float] = []
+        for m in re.finditer(r'p\s*[<>=]\s*([0-9]*\.?[0-9]+)', text, re.IGNORECASE):
+            try:
+                v = float(m.group(1))
+                if 0 <= v <= 1:
+                    vals.append(v)
+            except ValueError:
+                pass
+        return vals
+
+    def _analyze_p_values(self, p_values: List[float]) -> Dict:
+        significant = sum(1 for p in p_values if p < 0.05)
+        marginal = sum(1 for p in p_values if 0.05 <= p < 0.1)
+        rate = significant / len(p_values) if p_values else 0
+        warning = None
+        if len(p_values) > 1 and all(p < 0.05 for p in p_values):
+            warning = 'All reported p-values are < 0.05 — consider the possibility of p-hacking or selective reporting.'
+        elif rate > 0.8 and len(p_values) > 3:
+            warning = 'Unusually high significance rate — consider publication / reporting bias.'
+        return {
+            'total_p_values': len(p_values),
+            'significant_results': significant,
+            'marginally_significant': marginal,
+            'significance_rate': round(rate, 3),
+            'warning': warning,
+        }
+
+    def _extract_sample_size(self, text: str) -> Optional[int]:
+        patterns = [
+            r'(?:\bn|\bN|sample\s+size)\s*[=:]\s*(\d{1,6})',
+            r'(?:included|enrolled|recruited|of)\s+(\d{2,6})\s+(?:participants|subjects|patients|students|respondents)',
+            r'(\d{2,6})\s+(?:participants|subjects|patients|students|respondents)\b',
+        ]
+        for pat in patterns:
+            m = re.search(pat, text)
+            if m:
+                try:
+                    return int(m.group(1))
+                except ValueError:
+                    continue
+        return None
+
+    def _extract_effect_size(self, text: str) -> Optional[float]:
+        patterns = [
+            r"(?:effect\s+size|Cohen'?s\s+d|Hedges'?\s+g)\s*[=:]\s*([0-9]*\.?[0-9]+)",
+            r'(?:η²|eta[-\s]?squared|partial\s+η²)\s*[=:]\s*([0-9]*\.?[0-9]+)',
+        ]
+        for pat in patterns:
+            m = re.search(pat, text, re.IGNORECASE)
+            if m:
+                try:
+                    return float(m.group(1))
+                except ValueError:
+                    continue
+        return None
+
+    def _estimate_statistical_power(self, n: int, d: float, alpha: float = 0.05) -> Dict:
+        try:
+            ncp = d * math.sqrt(max(n, 2) / 2)
+            df = max(2 * n - 2, 1)
+            critical = stats.t.ppf(1 - alpha / 2, df)
+            power = 1 - stats.nct.cdf(critical, df, ncp) + stats.nct.cdf(-critical, df, ncp)
+            needed = int(np.ceil((stats.norm.ppf(0.8) + stats.norm.ppf(0.975)) ** 2 * 2 / max(d ** 2, 1e-6)))
+            return {
+                'estimated_power': round(float(power), 3),
+                'adequate_power': bool(power >= 0.8),
+                'sample_size_needed_for_80pct_power': int(needed),
+            }
+        except Exception as e:
+            return {'error': f'Could not calculate power: {e}'}
+
+    def _check_statistical_errors(self, text: str) -> List[str]:
+        errors = []
+        if re.search(r't[-\s]?test|ANOVA', text, re.IGNORECASE) and not re.search(
+            r'normal(?:ity|ly\s+distributed)|Shapiro|Kolmogorov|Q\-Q', text, re.IGNORECASE
+        ):
+            errors.append('Parametric tests used without reporting any check of normality assumptions.')
+        p_vals = self._extract_p_values(text)
+        if len(p_vals) > 5 and not re.search(
+            r'Bonferroni|Tukey|\bFDR\b|Holm|Benjamini|correction|adjust(?:ed|ment)', text, re.IGNORECASE
+        ):
+            errors.append('Many p-values reported without any correction for multiple comparisons.')
+        if re.search(r'(?:correlat\w*).{0,60}?(?:caus|lead|drive|result)', text, re.IGNORECASE) and not re.search(
+            r'correlation\s+does\s+not\s+imply\s+causation', text, re.IGNORECASE
+        ):
+            errors.append('Causal language used near correlational evidence without appropriate caveats.')
+        if re.search(r'\bsignificant\b', text, re.IGNORECASE) and not re.search(
+            r"effect\s+size|Cohen'?s\s+d|\bη²|confidence\s+interval|\bCI\b", text, re.IGNORECASE
+        ):
+            errors.append('Statistical significance reported without effect sizes or confidence intervals.')
+        return errors
+
+    # -------- Logic --------
+    def _analyze_logic(self, text: str) -> Dict:
+        fallacies = []
+        for name, pattern in self.logical_fallacies.items():
+            for m in re.finditer(pattern, text, re.IGNORECASE):
+                fallacies.append({
+                    'type': name,
+                    'location': m.start(),
+                    'context': text[max(0, m.start() - 60): m.end() + 60].strip(),
+                })
+        causal_issues = self._analyze_causal_claims(text)
+        score = max(0.0, 1.0 - (len(fallacies) * 0.08) - (len(causal_issues) * 0.1))
+        return {
+            'fallacies_detected': fallacies,
+            'causal_analysis_issues': causal_issues,
+            'logic_score': round(score, 3),
+        }
+
+    def _analyze_causal_claims(self, text: str) -> List[str]:
+        issues = []
+        causal = re.findall(r'\b(?:causes?|caused|affects?|influences?|determines?|leads?\s+to)\b', text, re.IGNORECASE)
+        if causal and not re.search(r'\b(?:experimental\s+design|controlled\s+experiment|randomi[sz]ed\s+(?:controlled\s+)?trial|RCT)\b', text, re.IGNORECASE):
+            issues.append('Causal language used without an experimental or randomized design.')
+        return issues
+
+    # -------- Evidence --------
+    def _evaluate_evidence(self, text: str) -> Dict:
+        indicators = {
+            'strong': [r'randomized\s+controlled\s+trial', r'meta[-\s]analysis', r'systematic\s+review',
+                       r'prospective\s+cohort', r'double[-\s]blind'],
+            'moderate': [r'case[-\s]control', r'cohort\s+study', r'cross[-\s]sectional',
+                         r'longitudinal', r'controlled\s+experiment'],
+            'weak': [r'case\s+study', r'anecdotal', r'expert\s+opinion',
+                     r'preliminary', r'pilot\s+study'],
+        }
+        levels: Dict[str, int] = defaultdict(int)
+        for level, pats in indicators.items():
+            for p in pats:
+                levels[level] += len(re.findall(p, text, re.IGNORECASE))
+        return {
+            'evidence_breakdown': dict(levels),
+            'citation_quality': self._analyze_citations(text),
+            'evidence_strength': round(self._calculate_evidence_strength(levels), 3),
+        }
+
+    def _analyze_citations(self, text: str) -> Dict:
+        citations = re.findall(r'\[\d+\]|\(\w+(?:\s+et\s+al\.)?,\s*\d{4}\)', text)
+        recent = len(re.findall(r'\b20(?:1[5-9]|2[0-6])\b', text))
+        return {'citation_count': len(citations), 'recent_citations_count': recent}
+
+    def _calculate_evidence_strength(self, levels: Dict[str, int]) -> float:
+        weights = {'strong': 1.0, 'moderate': 0.5, 'weak': 0.2}
+        total = sum(levels.values())
+        if total == 0:
+            return 0.0
+        weighted = sum(levels.get(k, 0) * w for k, w in weights.items())
+        return min(weighted / total, 1.0)
+
+    # -------- Biases --------
+    def _detect_biases(self, text: str) -> List[Dict]:
+        biases = []
+        if re.search(r'positive\s+results?|significant\s+findings?|successful\s+trial', text, re.IGNORECASE):
+            biases.append({'type': 'publication_bias',
+                           'description': 'Language suggests emphasis on positive/significant results; check for selective reporting.',
+                           'severity': 'medium'})
+        if re.search(r'as\s+expected|consistent\s+with\s+our\s+hypothesis|confirm(?:s|ing|ed)\s+our', text, re.IGNORECASE):
+            biases.append({'type': 'confirmation_bias',
+                           'description': 'Framing suggests the authors may have sought confirming rather than disconfirming evidence.',
+                           'severity': 'medium'})
+        # Selection bias: flag if either no random sampling/assignment is mentioned at all,
+        # OR the text explicitly says it was NOT random.
+        explicitly_not_random = bool(re.search(
+            r'\b(?:no|without|lack(?:ing)?\s+of|absent)\s+(?:random|randomi[sz]ation|random\s+(?:sampl|select|assign))',
+            text, re.IGNORECASE,
+        ))
+        has_random = bool(re.search(r'random\s+(?:sampl|select|assign)', text, re.IGNORECASE))
+        if explicitly_not_random or not has_random:
+            biases.append({'type': 'selection_bias',
+                           'description': 'No random sampling/assignment detected — selection bias is plausible.',
+                           'severity': 'high'})
+        m = re.search(r'(?:funded|supported|sponsored)\s+by\s+([A-Z][\w&.\- ]{2,60})', text)
+        if m:
+            biases.append({'type': 'funding_bias',
+                           'description': f"Study funded by {m.group(1).strip()} — consider potential conflicts of interest.",
+                           'severity': 'medium'})
+        return biases
+
+    # -------- Alternatives --------
+    def _generate_alternatives(self, text: str) -> List[str]:
+        alts = []
+        if re.search(r'correlat', text, re.IGNORECASE):
+            alts.append('Consider reverse causality: could Y be causing X rather than X causing Y?')
+        if re.search(r'significant\s+(?:difference|effect|result)', text, re.IGNORECASE):
+            alts.append("Statistical significance doesn't imply practical significance — examine effect sizes.")
+        if re.search(r'\bconclude|\btherefore|\bthus\b', text, re.IGNORECASE):
+            alts.append('A confounding third variable may explain both the independent and dependent variables.')
+        if re.search(r'clinical|patient|treatment|therapy', text, re.IGNORECASE):
+            alts.append('Consider placebo effects or natural disease progression as alternative explanations.')
+        if re.search(r'survey|questionnaire|self[-\s]report', text, re.IGNORECASE):
+            alts.append('Self-reported measures are susceptible to social desirability bias.')
+        if re.search(r'longitudinal|over\s+time|follow[-\s]up', text, re.IGNORECASE):
+            alts.append('Maturation effects or historical events may provide alternative explanations.')
+        return alts
+
+    # -------- Scoring helpers --------
+    def _calculate_confidence(self, report: Dict) -> float:
+        weights = {
+            'methodology_assessment': 0.30,
+            'statistical_validity': 0.25,
+            'logical_coherence': 0.25,
+            'evidence_strength': 0.20,
+        }
+        total = 0.0
+        for key, w in weights.items():
+            if key == 'methodology_assessment':
+                total += report[key]['methodology_score'] * w
+            elif key == 'logical_coherence':
+                total += report[key]['logic_score'] * w
+            elif key == 'evidence_strength':
+                total += report[key]['evidence_strength'] * w
+            elif key == 'statistical_validity':
+                errs = len(report[key].get('potential_errors', []))
+                total += max(0.0, 1 - errs * 0.15) * w
+        return round(total, 3)
+
+    def _generate_recommendations(self, report: Dict) -> List[str]:
+        recs = []
+        if report['methodology_assessment']['methodology_score'] < 0.7:
+            recs.append('Strengthen methodology: add control groups, increase sample size, or implement randomization.')
+        if report['statistical_validity']['potential_errors']:
+            recs.append('Review statistical analyses: justify test selection, correct for multiple comparisons, and report effect sizes with CIs.')
+        if report['logical_coherence']['logic_score'] < 0.8:
+            recs.append('Address logical fallacies: tighten causal reasoning and avoid overgeneralizing results.')
+        if report['evidence_strength']['evidence_strength'] < 0.6:
+            recs.append('Strengthen evidence base: cite higher-quality study designs or explicitly acknowledge evidence limitations.')
+        if report['potential_biases']:
+            recs.append('Mitigate potential biases: pre-register hypotheses, implement blinding, and run sensitivity analyses.')
+        return recs
+
+    def _rate_quality(self, score: float) -> str:
+        if score >= 0.8:
+            return 'Excellent'
+        if score >= 0.6:
+            return 'Good'
+        if score >= 0.4:
+            return 'Fair'
+        return 'Poor'

@@ -1,0 +1,357 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: The Pen Is Red - Advanced Red Teaming Analysis Platform
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: analyses
+    description: Document analysis operations
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /analyses:
+    get:
+      operationId: listAnalyses
+      tags: [analyses]
+      summary: List all saved analyses
+      description: Returns all saved analyses sorted by newest first
+      responses:
+        "200":
+          description: List of analyses
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AnalysisSummary"
+    post:
+      operationId: createAnalysis
+      tags: [analyses]
+      summary: Run a new document analysis
+      description: Submits a document for deep red-team analysis using the specified lens
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnalysisInput"
+      responses:
+        "201":
+          description: Analysis complete
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Analysis"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /analyses/{id}:
+    get:
+      operationId: getAnalysis
+      tags: [analyses]
+      summary: Get a specific analysis
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Analysis details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Analysis"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteAnalysis
+      tags: [analyses]
+      summary: Delete an analysis
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /analyses/{id}/solutions:
+    get:
+      operationId: getAnalysisSolutions
+      tags: [analyses]
+      summary: Get AI-generated solutions for a specific analysis
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Solutions for identified issues
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SolutionsResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /analyses/stats:
+    get:
+      operationId: getAnalysisStats
+      tags: [analyses]
+      summary: Get statistics across all analyses
+      responses:
+        "200":
+          description: Aggregate statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisStats"
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    AnalysisLens:
+      type: string
+      description: |
+        Single lens (red_team | blue_team | symbolic | philosophical),
+        mixed combos joined with + (e.g. red_team+blue_team),
+        or code-specific (code_python | code_json | code_yaml | code_html)
+
+    Finding:
+      type: object
+      required: [severity, category, title, description]
+      properties:
+        severity:
+          type: string
+          enum: [critical, high, medium, low, info]
+        category:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        evidence:
+          type: ["string", "null"]
+        recommendation:
+          type: ["string", "null"]
+
+    Citation:
+      type: object
+      required: [reference, status]
+      properties:
+        reference:
+          type: string
+        status:
+          type: string
+          enum: [verified, unverified, disputed, unavailable]
+        note:
+          type: ["string", "null"]
+        url:
+          type: ["string", "null"]
+
+    AnalysisSection:
+      type: object
+      required: [title, content, score]
+      properties:
+        title:
+          type: string
+        content:
+          type: string
+        score:
+          type: ["number", "null"]
+        findings:
+          type: array
+          items:
+            $ref: "#/components/schemas/Finding"
+
+    AnalysisInput:
+      type: object
+      required: [documentText, lens]
+      properties:
+        documentText:
+          type: string
+          minLength: 10
+        title:
+          type: ["string", "null"]
+        lens:
+          $ref: "#/components/schemas/AnalysisLens"
+
+    AnalysisSummary:
+      type: object
+      required: [id, title, lens, createdAt, wordCount, charCount, overallScore]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        lens:
+          $ref: "#/components/schemas/AnalysisLens"
+        createdAt:
+          type: string
+          format: date-time
+        wordCount:
+          type: integer
+        charCount:
+          type: integer
+        overallScore:
+          type: number
+        findingsCounts:
+          type: object
+          properties:
+            critical:
+              type: integer
+            high:
+              type: integer
+            medium:
+              type: integer
+            low:
+              type: integer
+
+    Analysis:
+      type: object
+      required: [id, title, lens, createdAt, wordCount, charCount, overallScore, executiveSummary, sections, findings, citations, recommendations]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        lens:
+          $ref: "#/components/schemas/AnalysisLens"
+        createdAt:
+          type: string
+          format: date-time
+        wordCount:
+          type: integer
+        charCount:
+          type: integer
+        overallScore:
+          type: number
+        confidenceLevel:
+          type: ["string", "null"]
+        executiveSummary:
+          type: string
+        sections:
+          type: array
+          items:
+            $ref: "#/components/schemas/AnalysisSection"
+        findings:
+          type: array
+          items:
+            $ref: "#/components/schemas/Finding"
+        citations:
+          type: array
+          items:
+            $ref: "#/components/schemas/Citation"
+        recommendations:
+          type: array
+          items:
+            type: string
+        documentText:
+          type: ["string", "null"]
+
+    SolutionsResponse:
+      type: object
+      required: [analysisId, solutions]
+      properties:
+        analysisId:
+          type: integer
+        solutions:
+          type: array
+          items:
+            type: object
+            required: [oversightTitle, solution, priority]
+            properties:
+              oversightTitle:
+                type: string
+              solution:
+                type: string
+              priority:
+                type: string
+                enum: [immediate, short_term, long_term]
+              resources:
+                type: array
+                items:
+                  type: string
+
+    AnalysisStats:
+      type: object
+      required: [totalAnalyses, byLens, avgScore, totalFindings]
+      properties:
+        totalAnalyses:
+          type: integer
+        byLens:
+          type: object
+          properties:
+            red_team:
+              type: integer
+            blue_team:
+              type: integer
+            symbolic:
+              type: integer
+            philosophical:
+              type: integer
+        avgScore:
+          type: number
+        totalFindings:
+          type: integer
+        recentAnalyses:
+          type: array
+          items:
+            $ref: "#/components/schemas/AnalysisSummary"
